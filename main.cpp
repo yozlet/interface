@@ -576,14 +576,15 @@ void display(void)
         glTranslatef(location[0], location[1], location[2]);
     
         // Draw Point Sprites
+    
+        // Load texture
         load_png_as_texture(texture_filename);
-            
-        /* assuming you have setup a 32-bit RGBA texture with a legal name */
         glActiveTexture(GL_TEXTURE0);
         glEnable( GL_TEXTURE_2D );
+    
+        // Set up point sprites
         glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
         glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-    
         glPointParameterfvARB( GL_POINT_DISTANCE_ATTENUATION_ARB, particle_attenuation_quadratic );
         float maxSize = 0.0f;
         glGetFloatv( GL_POINT_SIZE_MAX_ARB, &maxSize );
@@ -591,6 +592,8 @@ void display(void)
         glPointParameterfARB( GL_POINT_SIZE_MAX_ARB, maxSize );
         // glPointParameterfARB( GL_POINT_SIZE_MIN_ARB, 0.001f );
         glTexEnvf( GL_POINT_SPRITE_ARB, GL_COORD_REPLACE_ARB, GL_TRUE );
+    
+        // Render particles
         glEnable( GL_POINT_SPRITE_ARB );
         glBegin( GL_POINTS );
         {
