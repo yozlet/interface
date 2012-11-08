@@ -31,6 +31,9 @@
 // with full compiler optimization turned on), I've switched to using preprocessor
 // macros instead (which is probably faster anyways (at compile-time)).
 
+// Per-frame sample type
+typedef int16_t frameSample;
+
 /**
  * Low level audio interface.
  * 
@@ -48,15 +51,15 @@ public:
     static bool terminate ();
     
     // Write methods: write to internal audio buffer.
-    static void writeAudio  (unsigned int offset, unsigned int length, float const *left, float const *right);
-    static void addAudio    (unsigned int offset, unsigned int length, float const *left, float const *right);
-    static void writeTone   (unsigned int offset, unsigned int length, float const left, float const right);
-    static void addTone     (unsigned int offset, unsigned int length, float const left, float const right);
+    static void writeAudio  (unsigned int offset, unsigned int length, frameSample const *left, frameSample const *right);
+    static void addAudio    (unsigned int offset, unsigned int length, frameSample const *left, frameSample const *right);
+    static void writeTone   (unsigned int offset, unsigned int length, frameSample const left, frameSample const right);
+    static void addTone     (unsigned int offset, unsigned int length, frameSample const left, frameSample const right);
     static void clearAudio  (unsigned int offset, unsigned int length);
     
     // Read data from internal 'input' audio buffer to an external audio buffer.
     // (*only* works if WRITE_AUDIO_INPUT_TO_BUFFER is enabled).
-    static void readAudioInput (unsigned int offset, unsigned int length, float *left, float *right);
+    static void readAudioInput (unsigned int offset, unsigned int length, frameSample *left, frameSample *right);
     
     /**
      * Set the audio input gain. (multiplier applied to mic input)
@@ -89,8 +92,13 @@ private:
          * As this is a ring buffer, it should not be written to directly – thus methods 
            like Audio::writeAudio are provided.
          */
+        
+        /**
+         * Previously l & r, but for the moment we're down to one channel.
+         * Revert to an older version to get stereo back.
+         */
         struct BufferFrame{
-            float l, r;
+            frameSample l;
         } *buffer, *inputBuffer;
         /**
          * Length of the audio buffer.
@@ -110,10 +118,10 @@ private:
         AudioData () : bufferPos(0) {
             inputGain = 1.0f;
             buffer = new BufferFrame[bufferLength];
-            memset((float*)buffer, 0, sizeof(float) * bufferLength * 2);
+            memset((frameSample*)buffer, 0, sizeof(frameSample) * bufferLength);
             #if WRITE_AUDIO_INPUT_TO_BUFFER
             inputBuffer = new BufferFrame[bufferLength];
-            memset((float*)inputBuffer, 0, sizeof(float) * bufferLength * 2);
+            memset((frameSample*)inputBuffer, 0, sizeof(frameSample) * bufferLength);
             #else
             inputBuffer = NULL;
             #endif

@@ -26,6 +26,7 @@ Audio::AudioData *Audio::data;
 PaStream *Audio::stream;
 PaError Audio::err;
 float Audio::AudioData::inputGain;
+
 /**
  * Audio callback used by portaudio.
  * Communicates with Audio via a shared pointer to Audio::data.
@@ -53,8 +54,8 @@ int audioCallback (const void *inputBuffer,
                    void *userData) 
 {
     Audio::AudioData *data = (Audio::AudioData*)userData;
-    float *input = (float*)inputBuffer;
-    float *output = (float*)outputBuffer;
+    frameSample *input = (frameSample*)inputBuffer;
+    frameSample *output = (frameSample*)outputBuffer;
     
     #if WRITE_AUDIO_INPUT_TO_OUTPUT
     if (input != NULL) {// && Audio::writeAudioInputToOutput) {
@@ -67,11 +68,11 @@ int audioCallback (const void *inputBuffer,
         #if WRITE_AUDIO_INPUT_TO_BUFFER
             data->buffer[p].l +=
                 data->inputBuffer[p].l = (*input++) * data->inputGain;
-            data->buffer[p].r +=
-                data->inputBuffer[p].r = (*input++) * data->inputGain;
+            //data->buffer[p].r +=
+            //    data->inputBuffer[p].r = (*input++) * data->inputGain;
         #else
             data->buffer[p].l += (*input++) * data->inputGain;
-            data->buffer[p].r += (*input++) * data->inputGain;
+            //data->buffer[p].r += (*input++) * data->inputGain;
         #endif
         }
         if (f > 0) {
@@ -80,11 +81,11 @@ int audioCallback (const void *inputBuffer,
             #if WRITE_AUDIO_INPUT_TO_BUFFER
                 data->buffer[p].l +=
                     data->inputBuffer[p].l = (*input++) * data->inputGain;
-                data->buffer[p].r +=
-                    data->inputBuffer[p].r = (*input++) * data->inputGain;
+                //data->buffer[p].r +=
+                //    data->inputBuffer[p].r = (*input++) * data->inputGain;
             #else
                 data->buffer[p].l += (*input++) * data->inputGain;
-                data->buffer[p].r += (*input++) * data->inputGain;
+                //data->buffer[p].r += (*input++) * data->inputGain;
             #endif
             }
         }
@@ -95,13 +96,13 @@ int audioCallback (const void *inputBuffer,
         p = data->bufferPos;
         for (; p < data->bufferLength && f > 0; --f, ++p) {
             data->inputBuffer[p].l = (*input++) * data->inputGain;
-            data->inputBuffer[p].r = (*input++) * data->inputGain;
+            //data->inputBuffer[p].r = (*input++) * data->inputGain;
         }
         if (f > 0) {
                 // handle data->buffer wraparound
             for (p = 0; f > 0; --f, ++p) {
                 data->inputBuffer[p].l = (*input++) * data->inputGain;
-                data->inputBuffer[p].r = (*input++) * data->inputGain;
+                //data->inputBuffer[p].r = (*input++) * data->inputGain;
             }
         }
     }
@@ -111,18 +112,19 @@ int audioCallback (const void *inputBuffer,
             // wraparound: write first section (end of buffer) first
         
             // note: buffer is just an array of a struct of floats, so it can be typecast to float*
-        memcpy(output, (float*)(data->buffer + data->bufferPos),    // write data buffer
-               (data->bufferLength - data->bufferPos) * 2 * sizeof(float));
-        memset((float*)(data->buffer + data->bufferPos), 0,                 // clear data buffer
-               (data->bufferLength - data->bufferPos) * 2 * sizeof(float));
+        memcpy(output, (frameSample*)(data->buffer + data->bufferPos),    // write data buffer
+               (data->bufferLength - data->bufferPos) * sizeof(frameSample));
+        memset((frameSample*)(data->buffer + data->bufferPos), 0,                 // clear data buffer
+               (data->bufferLength - data->bufferPos) * sizeof(frameSample));
         frames -= (data->bufferLength - data->bufferPos);   // adjust frames to be written
         data->bufferPos = 0;                                // reset position to start
     }
     
-    memcpy(output, (float*)(data->buffer + data->bufferPos),  // write data buffer
-           frames * 2 * sizeof(float));
-    memset((float*)(data->buffer + data->bufferPos), 0,       // clear data buffer
-           frames * 2 * sizeof(float));
+    // Need to multiply frames by number of channels (currently 1)
+    memcpy(output, (frameSample*)(data->buffer + data->bufferPos),  // write data buffer
+           frames * sizeof(frameSample));
+    memset((frameSample*)(data->buffer + data->bufferPos), 0,       // clear data buffer
+           frames * sizeof(frameSample));
     data->bufferPos += frames;                                // update position
     
     return paContinue;
@@ -135,7 +137,7 @@ int audioCallback (const void *inputBuffer,
  * @return  Returns true if successful or false if an error occurred.
             Use Audio::getError() to retrieve the error code.
  */
-bool Audio::init() 
+bool Audio::init()
 {
     initialized = true;
     
@@ -147,7 +149,7 @@ bool Audio::init()
     err = Pa_OpenDefaultStream(&stream,  
                                1,       // input channels
                                1,       // output channels
-                               paFloat32, // sample format
+                               paInt16, // sample format
                                22050,   // sample rate (hz)
                                512,     // frames per buffer
                                audioCallback, // callback function
@@ -203,7 +205,7 @@ error:
  * @param[in]   left    Left channel of the audio stream.
  * @param[in]   right   Right channel of the audio stream.
  */
-void Audio::writeAudio (unsigned int offset, unsigned int length, float const *left, float const *right) {
+void Audio::writeAudio (unsigned int offset, unsigned int length, frameSample const *left, frameSample const *right) {
     if (data->buffer == NULL)
         return;
     if (length > data->bufferLength) {
@@ -215,13 +217,13 @@ void Audio::writeAudio (unsigned int offset, unsigned int length, float const *l
         p -= data->bufferLength;
     for (; p < data->bufferLength && length > 0; --length, ++p) {
         data->buffer[p].l = *left++;
-        data->buffer[p].r = *right++;
+        //data->buffer[p].r = *right++;
     }
     if (length > 0) {
         p = 0;
         for (; length > 0; --length, ++p) {
             data->buffer[p].l = *left++;
-            data->buffer[p].r = *right++;
+            //data->buffer[p].r = *right++;
         }
     }
 }
@@ -234,7 +236,7 @@ void Audio::writeAudio (unsigned int offset, unsigned int length, float const *l
  * @param[in]   left    Left component.
  * @param[in]   right   Right component.
  */
-void Audio::writeTone (unsigned int offset, unsigned int length, float const left, float const right) {
+void Audio::writeTone (unsigned int offset, unsigned int length, frameSample const left, frameSample const right) {
     if (data->buffer == NULL)
         return;
     if (length > data->bufferLength) {
@@ -246,13 +248,13 @@ void Audio::writeTone (unsigned int offset, unsigned int length, float const lef
         p -= data->bufferLength;
     for (; p < data->bufferLength && length > 0; --length, ++p) {
         data->buffer[p].l = left;
-        data->buffer[p].r = right;
+        //data->buffer[p].r = right;
     }
     if (length > 0) {
         p = 0;
         for (; length > 0; --length, ++p) {
             data->buffer[p].l = left;
-            data->buffer[p].r = right;
+            //data->buffer[p].r = right;
         }
     }
 }
@@ -266,7 +268,7 @@ void Audio::writeTone (unsigned int offset, unsigned int length, float const lef
  * @param[in]   left    Left channel of the audio stream.
  * @param[in]   right   Right channel of the audio stream.
  */
-void Audio::addAudio (unsigned int offset, unsigned int length, float const *left, float const *right) {
+void Audio::addAudio (unsigned int offset, unsigned int length, frameSample const *left, frameSample const *right) {
     if (data->buffer == NULL)
         return;
     if (length > data->bufferLength) {
@@ -278,13 +280,13 @@ void Audio::addAudio (unsigned int offset, unsigned int length, float const *lef
         p -= data->bufferLength;
     for (; p < data->bufferLength && length > 0; --length, ++p) {
         data->buffer[p].l += *left++;
-        data->buffer[p].r += *right++;
+        //data->buffer[p].r += *right++;
     }
     if (length > 0) {
         p = 0;
         for (; length > 0; --length, ++p) {
             data->buffer[p].l += *left++;
-            data->buffer[p].r += *right++;
+            //data->buffer[p].r += *right++;
         }
     }
 }
@@ -298,7 +300,7 @@ void Audio::addAudio (unsigned int offset, unsigned int length, float const *lef
  * @param[in]   left    Left component.
  * @param[in]   right   Right component.
  */
-void Audio::addTone (unsigned int offset, unsigned int length, float const left, float const right) {
+void Audio::addTone (unsigned int offset, unsigned int length, frameSample const left, frameSample const right) {
     if (data->buffer == NULL)
         return;
     if (length > data->bufferLength) {
@@ -310,13 +312,13 @@ void Audio::addTone (unsigned int offset, unsigned int length, float const left,
         p -= data->bufferLength;
     for (; p < data->bufferLength && length > 0; --length, ++p) {
         data->buffer[p].l += left;
-        data->buffer[p].r += right;
+        //data->buffer[p].r += right;
     }
     if (length > 0) {
         p = 0;
         for (; length > 0; --length, ++p) {
             data->buffer[p].l += left;
-            data->buffer[p].r += right;
+            //data->buffer[p].r += right;
         }
     }
 }
@@ -336,13 +338,13 @@ void Audio::clearAudio(unsigned int offset, unsigned int length) {
     if (p > data->bufferLength) 
         p -= data->bufferLength;
     if (length + p < data->bufferLength) {
-        memset((float*)(data->buffer + p), 0, 
-               sizeof(float) * 2 * length);
+        memset((frameSample*)(data->buffer + p), 0, 
+               sizeof(frameSample) * length);
     } else {
-        memset((float*)(data->buffer + p), 0, 
-               sizeof(float) * 2 * (data->bufferLength - p));
-        memset((float*)(data->buffer + p), 0, 
-               sizeof(float) * 2 * (data->bufferLength + p - data->bufferLength));
+        memset((frameSample*)(data->buffer + p), 0, 
+               sizeof(frameSample) * (data->bufferLength - p));
+        memset((frameSample*)(data->buffer + p), 0, 
+               sizeof(frameSample) * (data->bufferLength + p - data->bufferLength));
     }
 }
 
@@ -353,7 +355,7 @@ void Audio::clearAudio(unsigned int offset, unsigned int length) {
  * @param[out]  left    Left channel of the target buffer.
  * @param[out]  right   Right channel of the target buffer.
  */
-void Audio::readAudioInput (unsigned int offset, unsigned int length, float *left, float *right) {
+void Audio::readAudioInput (unsigned int offset, unsigned int length, frameSample *left, frameSample *right) {
 #if WRITE_AUDIO_INPUT_TO_BUFFER
     if (data->inputBuffer == NULL)
         return;
@@ -366,13 +368,13 @@ void Audio::readAudioInput (unsigned int offset, unsigned int length, float *lef
         p -= data->bufferLength;
     for (; p < data->bufferLength && length > 0; --length, ++p) {
         *left++ = data->inputBuffer[p].l;
-        *right++ = data->inputBuffer[p].r;
+        //*right++ = data->inputBuffer[p].r;
     }
     if (length > 0) {
         p = 0;
         for (; length > 0; --length, ++p) {
             *left++ = data->inputBuffer[p].l;
-            *right++ = data->inputBuffer[p].r;
+            //*right++ = data->inputBuffer[p].r;
         }
     }
 #else
