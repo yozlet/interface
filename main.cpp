@@ -65,8 +65,10 @@ timeval ping_start;
 int ping_count = 0;
 float ping_msecs = 0.0;  
 int packetcount = 0;
-int packets_per_second = 0; 
+int packets_per_second = 0;
 int bytes_per_second = 0;
+int recordings_per_second = 0;
+int audiocount = 0;
 int bytescount = 0;
 
 //  Getting a target location from other machine (or loopback) to display
@@ -204,22 +206,30 @@ char texture_filename[] = "int-texture256-v4.png";
 unsigned int texture_width = 256;
 unsigned int texture_height = 256;
 
-
 float particle_attenuation_quadratic[] =  { 0.0f, 0.0f, 2.0f }; // larger Z = smaller particles
 
+// Audio/networking
+
+const unsigned int bufferSize = 1000 * sizeof(frameSample); // taken from audio.h; need to move to a config
+frameSample audio_buffer[bufferSize + 1]; // first entry is 42
+frameSample audio_mean, audio_max, audio_mean_received, audio_max_received;
+uint32_t audio_packet_count, avg_audio_packet_size, audio_bytes_sent, audio_packets_received;
 
 
 //  Every second, check the frame rates and other stuff
 void Timer(int extra)
 {
     gettimeofday(&timer_end, NULL);
-    FPS = (float)framecount / ((float)diffclock(timer_start,timer_end) / 1000.f);
-    packets_per_second = (float)packetcount / ((float)diffclock(timer_start,timer_end) / 1000.f);
-    bytes_per_second = (float)bytescount / ((float)diffclock(timer_start,timer_end) / 1000.f);
+    float duration = (float)diffclock(timer_start,timer_end);
+    FPS = (float)framecount / ( duration / 1000.f);
+    packets_per_second = (float)packetcount / ( duration / 1000.f);
+    bytes_per_second = (float)bytescount / ( duration / 1000.f);
+    recordings_per_second = (float)audiocount / ( duration / 1000.f);
    	framecount = 0;
     samplecount = 0; 
     packetcount = 0;
     bytescount = 0;
+    audiocount = 0;
     
 	glutTimerFunc(1000,Timer,0);
     gettimeofday(&timer_start, NULL);
@@ -232,9 +242,15 @@ void display_stats(void)
     drawtext(10, 15, 0.10, 0, 1.0, 0, legend);
     
     char stats[200];
-    sprintf(stats, "FPS = %3.0f, Ping = %4.1f Packets/Sec = %d, Bytes/sec = %d", 
+    sprintf(stats, "FPS = %3.0f, Ping = %4.1f Packets/Sec = %d, Bytes/sec = %d",
             FPS, ping_msecs, packets_per_second,  bytes_per_second);
-    drawtext(10, 30, 0.10, 0, 1.0, 0, stats); 
+    drawtext(10, 30, 0.10, 0, 1.0, 0, stats);
+    
+    char audio[200];
+    sprintf(audio, "Audio Sent: mean = %05d, max = %05d.  Audio Received: mean = %05d, max = %05d. Recordings/sec = %d, avg size = %d, packets received %d",
+            abs(audio_mean), audio_max, abs(audio_mean_received), audio_max_received, recordings_per_second, avg_audio_packet_size, audio_packets_received);
+    drawtext(10, 45, 0.10, 0, 1.0, 0, audio);
+    
     
     /*
     char adc[200];
@@ -262,11 +278,31 @@ void initDisplay(void)
     glEnable(GL_DEPTH_TEST);
 }
 
+int network_audio_callback(unsigned long frames)
+{
+    audio_buffer[0] = 42;
+    Audio::readAudioInput(1, frames, &audio_buffer[1], NULL);
+    // Calculate audio mean and max for stats display
+    audio_mean = audio_max = 0;
+    frameSample v;
+    for (int i = 1; i < frames; i++) {
+        v = audio_buffer[i];
+        audio_mean += v;
+        audio_max = v > audio_max ? v : audio_max;
+    }
+    network_send(UDP_socket, (char*)audio_buffer, frames);
+    audio_packet_count++; audiocount++;
+    audio_bytes_sent += frames * sizeof(frameSample);
+    avg_audio_packet_size = audio_bytes_sent / audio_packet_count;
+    return 0;
+}
+
 void init(void)
 {
     int i, j; 
 
-    Audio::init();
+    audio_packet_count = audio_bytes_sent = 0;
+    Audio::init(&network_audio_callback);
     printf( "Audio started.\n" );
 
     //  Clear serial channels 
@@ -762,6 +798,19 @@ void read_network()
             gettimeofday(&check, NULL);
             ping_msecs = (float)diffclock(ping_start, check);
 
+        } else if (((frameSample*)incoming_packet)[0] == 42) {
+            // Mono audio
+            frameSample *packet_audio = (frameSample*)incoming_packet;
+            // Calculate stats on incoming audio
+            audio_mean_received = audio_max_received = 0;
+            audio_packets_received++;
+            frameSample v;
+            for (int i = 1; i < (bytes_recvd / sizeof(frameSample)); i++) {
+                v = packet_audio[i];
+                audio_mean_received += v;
+                audio_max_received = v > audio_max_received ? v : audio_max_received;
+            }
+            Audio::addAudio(1, bytes_recvd, packet_audio, NULL);
         }
     }
 }
@@ -784,7 +833,7 @@ void idle(void)
 
         if (!step_on) glutPostRedisplay();
         last_frame = check;
-        
+                
         //  Every 30 frames or so, check ping time 
         ping_count++;
         if (ping_count >= 30) {
@@ -793,8 +842,9 @@ void idle(void)
         }
     }
     
-    //  Read network packets
+    //  Read network packets into audio buffer
     read_network();
+    
     //  Read serial data 
     if (serial_on) samplecount += read_sensors(0, &avg_adc_channels[0], &adc_channels[0]);
     
@@ -868,9 +918,6 @@ int main(int argc, char** argv)
     int test_recv = network_receive(UDP_socket, incoming_packet, delay);
     printf("Received %i bytes\n", test_recv);
     
-       //  Load textures 
-    //Img.Load("/Users/philip/Downloads/galaxy1.tga");
-
     //
     //  Try to connect the serial port I/O
     //

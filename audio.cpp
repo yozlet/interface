@@ -26,6 +26,7 @@ Audio::AudioData *Audio::data;
 PaStream *Audio::stream;
 PaError Audio::err;
 float Audio::AudioData::inputGain;
+int (*bufferCallback)(unsigned long);
 
 /**
  * Audio callback used by portaudio.
@@ -107,6 +108,13 @@ int audioCallback (const void *inputBuffer,
         }
     }
     #endif
+    
+    // If there's a callback set, call it
+    if (bufferCallback)
+    {
+        bufferCallback(frames);
+    }
+    
         // Write data->buffer into outputBuffer
     if (data->bufferPos + frames >= data->bufferLength) {
             // wraparound: write first section (end of buffer) first
@@ -137,21 +145,23 @@ int audioCallback (const void *inputBuffer,
  * @return  Returns true if successful or false if an error occurred.
             Use Audio::getError() to retrieve the error code.
  */
-bool Audio::init()
+bool Audio::init(int(*bc)(unsigned long))
 {
     initialized = true;
+    bufferCallback = bc;
     
     data = new AudioData();
     
     err = Pa_Initialize();
     if (err != paNoError) goto error;
     
+    // IMPORTANT: Sample format should be equivalent to frameSample type (defined in header).
     err = Pa_OpenDefaultStream(&stream,  
                                1,       // input channels
                                1,       // output channels
                                paInt16, // sample format
                                22050,   // sample rate (hz)
-                               512,     // frames per buffer
+                               256,     // frames per buffer
                                audioCallback, // callback function
                                (void*)data);  // user data to be passed to callback
     if (err != paNoError) goto error;
@@ -198,8 +208,8 @@ error:
 }
 
 /**
- * Write a stereo audio stream (float*) to the audio buffer.
- * Values should be clamped between -1.0f and 1.0f.
+ * Write a stereo audio stream (frameSample*) to the audio buffer.
+ * If frameSample is a float, values should be clamped between -1.0f and 1.0f.
  * @param[in]   offset  Write offset from the start of the audio buffer.
  * @param[in]   length  Length of audio channels to be read.
  * @param[in]   left    Left channel of the audio stream.
@@ -229,8 +239,8 @@ void Audio::writeAudio (unsigned int offset, unsigned int length, frameSample co
 }
 
 /**
- * Write a repeated stereo sample (float) to the audio buffer.
- * Values should be clamped between -1.0f and 1.0f.
+ * Write a repeated stereo sample (frameSample) to the audio buffer.
+ * If frameSample is a float, values should be clamped between -1.0f and 1.0f.
  * @param[in]   offset  Write offset from the start of the audio buffer.
  * @param[in]   length  Length of tone.
  * @param[in]   left    Left component.
@@ -260,9 +270,9 @@ void Audio::writeTone (unsigned int offset, unsigned int length, frameSample con
 }
 
 /**
- * Write a stereo audio stream (float*) to the audio buffer. 
+ * Write a stereo audio stream (frameSample*) to the audio buffer. 
  * Audio stream is added to the existing contents of the audio buffer.
- * Values should be clamped between -1.0f and 1.0f.
+ * If frameSample is a float, values should be clamped between -1.0f and 1.0f.
  * @param[in]   offset  Write offset from the start of the audio buffer.
  * @param[in]   length  Length of audio channels to be read.
  * @param[in]   left    Left channel of the audio stream.
@@ -292,9 +302,9 @@ void Audio::addAudio (unsigned int offset, unsigned int length, frameSample cons
 }
 
 /**
- * Write a repeated stereo sample (float) to the audio buffer.
+ * Write a repeated stereo sample (frameSample) to the audio buffer.
  * Sample is added to the existing contents of the audio buffer.
- * Values should be clamped between -1.0f and 1.0f.
+ * If frameSample is a float, values should be clamped between -1.0f and 1.0f.
  * @param[in]   offset  Write offset from the start of the audio buffer.
  * @param[in]   length  Length of tone.
  * @param[in]   left    Left component.

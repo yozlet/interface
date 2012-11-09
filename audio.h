@@ -17,12 +17,12 @@
  * If enabled, direct the audio callback to write the audio input buffer 
  * directly into the audio output buffer.
  */
-#define WRITE_AUDIO_INPUT_TO_OUTPUT 1
+#define WRITE_AUDIO_INPUT_TO_OUTPUT 0
 /**
  * If enabled, create an additional buffer to store audio input
  * and direct the audio callback to write the audio input to this buffer.
  */
-#define WRITE_AUDIO_INPUT_TO_BUFFER 0
+#define WRITE_AUDIO_INPUT_TO_BUFFER 1
 
 // Note: I initially used static const bools within the Audio class and normal
 // 'if' blocks instead of preprocessor - under the assumption that the compiler
@@ -46,7 +46,7 @@ typedef int16_t frameSample;
 class Audio {
 public:
     // Initializes portaudio. Should be called at the beginning of program execution.
-    static bool init ();
+    static bool init (int(*bc)(unsigned long));
     // Deinitializes portaudio. Should be called at the end of program execution.
     static bool terminate ();
     
