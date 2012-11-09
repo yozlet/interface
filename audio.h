@@ -103,19 +103,26 @@ private:
         /**
          * Length of the audio buffer.
          */
-        const static unsigned int bufferLength = 1000;
+        const static unsigned int bufferLength = 10000;
         /**
-         * Current position (start) within the ring buffer.
+         * Current reader position (start) within the ring buffer.
+         * The sound output will read from this point.
          * Updated by the audio callback.
          */
-        unsigned int bufferPos;
+        unsigned int bufferReadPos;
+        /**
+         * Current writer position (start) within the ring buffer.
+         * New data will be added from this point.
+         * Updated by the audio callback.
+         */
+        unsigned int bufferWritePos;
         /**
          * Audio input gain (multiplier applied to the incoming audio stream).
          * Use Audio::setInputGain() to modify this.
          */
         static float inputGain;// = 1.f;
         
-        AudioData () : bufferPos(0) {
+        AudioData () : bufferReadPos(0), bufferWritePos(0) {
             inputGain = 1.0f;
             buffer = new BufferFrame[bufferLength];
             memset((frameSample*)buffer, 0, sizeof(frameSample) * bufferLength);

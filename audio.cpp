@@ -62,9 +62,9 @@ int audioCallback (const void *inputBuffer,
     if (input != NULL) {// && Audio::writeAudioInputToOutput) {
             // combine input into data buffer
         
-            // temp variables (frames and bufferPos need to remain untouched so they can be used in the second block of code)
+            // temp variables (frames and bufferReadPos need to remain untouched so they can be used in the second block of code)
         unsigned int f = (unsigned int)frames,  
-        p = data->bufferPos;
+        p = data->bufferReadPos;
         for (; p < data->bufferLength && f > 0; --f, ++p) {
         #if WRITE_AUDIO_INPUT_TO_BUFFER
             data->buffer[p].l +=
@@ -94,7 +94,7 @@ int audioCallback (const void *inputBuffer,
     #elif WRITE_AUDIO_INPUT_TO_BUFFER
     if (input != NULL) {// && Audio::writeAudioInputToBuffer) {
         unsigned int f = (unsigned int)frames,  
-        p = data->bufferPos;
+        p = data->bufferReadPos;
         for (; p < data->bufferLength && f > 0; --f, ++p) {
             data->inputBuffer[p].l = (*input++) * data->inputGain;
             //data->inputBuffer[p].r = (*input++) * data->inputGain;
@@ -116,25 +116,32 @@ int audioCallback (const void *inputBuffer,
     }
     
         // Write data->buffer into outputBuffer
-    if (data->bufferPos + frames >= data->bufferLength) {
+    if (data->bufferReadPos + frames >= data->bufferLength) {
             // wraparound: write first section (end of buffer) first
         
             // note: buffer is just an array of a struct of floats, so it can be typecast to float*
-        memcpy(output, (frameSample*)(data->buffer + data->bufferPos),    // write data buffer
-               (data->bufferLength - data->bufferPos) * sizeof(frameSample));
-        memset((frameSample*)(data->buffer + data->bufferPos), 0,                 // clear data buffer
-               (data->bufferLength - data->bufferPos) * sizeof(frameSample));
-        frames -= (data->bufferLength - data->bufferPos);   // adjust frames to be written
-        data->bufferPos = 0;                                // reset position to start
+        memcpy(output, (frameSample*)(data->buffer + data->bufferReadPos),    // write data buffer
+               (data->bufferLength - data->bufferReadPos) * sizeof(frameSample));
+        memset((frameSample*)(data->buffer + data->bufferReadPos), 0,                 // clear data buffer
+               (data->bufferLength - data->bufferReadPos) * sizeof(frameSample));
+        frames -= (data->bufferLength - data->bufferReadPos);   // adjust frames to be written
+        data->bufferReadPos = 0;                                // reset position to start
     }
     
     // Need to multiply frames by number of channels (currently 1)
-    memcpy(output, (frameSample*)(data->buffer + data->bufferPos),  // write data buffer
+    memcpy(output, (frameSample*)(data->buffer + data->bufferReadPos),  // write data buffer
            frames * sizeof(frameSample));
-    memset((frameSample*)(data->buffer + data->bufferPos), 0,       // clear data buffer
+    memset((frameSample*)(data->buffer + data->bufferReadPos), 0,       // clear data buffer
            frames * sizeof(frameSample));
-    data->bufferPos += frames;                                // update position
     
+    // update reader position, and drag writer along if it's at the same point
+    if (data->bufferReadPos == data->bufferWritePos) {
+        data->bufferReadPos += frames;
+        data->bufferWritePos = data->bufferReadPos;
+    } else {
+        data->bufferReadPos += frames;        
+    }
+        
     return paContinue;
 }
 
@@ -161,7 +168,7 @@ bool Audio::init(int(*bc)(unsigned long))
                                1,       // output channels
                                paInt16, // sample format
                                22050,   // sample rate (hz)
-                               256,     // frames per buffer
+                               512,     // frames per buffer
                                audioCallback, // callback function
                                (void*)data);  // user data to be passed to callback
     if (err != paNoError) goto error;
@@ -222,7 +229,7 @@ void Audio::writeAudio (unsigned int offset, unsigned int length, frameSample co
         fprintf(stderr, "Audio::writeAudio length exceeded (%d). Truncating to %d.\n", length, data->bufferLength);
         length = data->bufferLength;
     }
-    unsigned int p = data->bufferPos + offset;
+    unsigned int p = data->bufferReadPos + offset;
     if (p > data->bufferLength) 
         p -= data->bufferLength;
     for (; p < data->bufferLength && length > 0; --length, ++p) {
@@ -253,7 +260,7 @@ void Audio::writeTone (unsigned int offset, unsigned int length, frameSample con
         fprintf(stderr, "Audio::writeTone length exceeded (%d). Truncating to %d.\n", length, data->bufferLength);
         length = data->bufferLength;
     }
-    unsigned int p = data->bufferPos + offset;
+    unsigned int p = data->bufferReadPos + offset;
     if (p > data->bufferLength) 
         p -= data->bufferLength;
     for (; p < data->bufferLength && length > 0; --length, ++p) {
@@ -285,7 +292,7 @@ void Audio::addAudio (unsigned int offset, unsigned int length, frameSample cons
         fprintf(stderr, "Audio::addAudio length exceeded (%d). Truncating to %d.\n", length, data->bufferLength);
         length = data->bufferLength;
     }
-    unsigned int p = data->bufferPos + offset;
+    unsigned int p = data->bufferWritePos;
     if (p > data->bufferLength) 
         p -= data->bufferLength;
     for (; p < data->bufferLength && length > 0; --length, ++p) {
@@ -299,6 +306,7 @@ void Audio::addAudio (unsigned int offset, unsigned int length, frameSample cons
             //data->buffer[p].r += *right++;
         }
     }
+    data->bufferWritePos = p;
 }
 
 /**
@@ -317,7 +325,7 @@ void Audio::addTone (unsigned int offset, unsigned int length, frameSample const
         fprintf(stderr, "Audio::writeTone length exceeded (%d). Truncating to %d.\n", length, data->bufferLength);
         length = data->bufferLength;
     }
-    unsigned int p = data->bufferPos + offset;
+    unsigned int p = data->bufferReadPos + offset;
     if (p > data->bufferLength) 
         p -= data->bufferLength;
     for (; p < data->bufferLength && length > 0; --length, ++p) {
@@ -344,7 +352,7 @@ void Audio::clearAudio(unsigned int offset, unsigned int length) {
         fprintf(stderr, "Audio::clearAudio length exceeded (%d). Truncating to %d.\n", length, data->bufferLength);
         length = data->bufferLength;
     }
-    unsigned int p = data->bufferPos + offset;
+    unsigned int p = data->bufferReadPos + offset;
     if (p > data->bufferLength) 
         p -= data->bufferLength;
     if (length + p < data->bufferLength) {
@@ -373,7 +381,7 @@ void Audio::readAudioInput (unsigned int offset, unsigned int length, frameSampl
         fprintf(stderr, "Audio::readAudioInput length exceeded (%d + %d). Truncating to %d + %d.\n", offset, length, offset, data->bufferLength - offset);
         length = data->bufferLength - offset;
     }
-    unsigned int p = data->bufferPos + offset;
+    unsigned int p = data->bufferReadPos + offset;
     if (p > data->bufferLength) 
         p -= data->bufferLength;
     for (; p < data->bufferLength && length > 0; --length, ++p) {

@@ -247,8 +247,8 @@ void display_stats(void)
     drawtext(10, 30, 0.10, 0, 1.0, 0, stats);
     
     char audio[200];
-    sprintf(audio, "Audio Sent: mean = %05d, max = %05d.  Audio Received: mean = %05d, max = %05d. Recordings/sec = %d, avg size = %d, packets received %d",
-            abs(audio_mean), audio_max, abs(audio_mean_received), audio_max_received, recordings_per_second, avg_audio_packet_size, audio_packets_received);
+    sprintf(audio, "Audio Sent: mean = %05d, max = %05d.  Audio Received: mean = %05d, max = %05d. Recordings/sec = %d, avg size = %d, packets not received %d",
+            abs(audio_mean), audio_max, abs(audio_mean_received), audio_max_received, recordings_per_second, avg_audio_packet_size, audio_packet_count - audio_packets_received);
     drawtext(10, 45, 0.10, 0, 1.0, 0, audio);
     
     
@@ -810,7 +810,7 @@ void read_network()
                 audio_mean_received += v;
                 audio_max_received = v > audio_max_received ? v : audio_max_received;
             }
-            Audio::addAudio(1, bytes_recvd, packet_audio, NULL);
+            Audio::addAudio(0, bytes_recvd, packet_audio, NULL);
         }
     }
 }
